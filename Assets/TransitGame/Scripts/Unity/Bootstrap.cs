@@ -18,6 +18,7 @@ namespace TransitGame
         public float TimeScale { get; set; } = 1f;
 
         Transform _world;
+        Dictionary<(int, int), List<int>> _edgeMap;
         readonly Dictionary<int, StationView> _stationViews = new Dictionary<int, StationView>();
         readonly Dictionary<int, LineView> _lineViews = new Dictionary<int, LineView>();
         readonly Dictionary<int, TrainView> _trainViews = new Dictionary<int, TrainView>();
@@ -36,6 +37,7 @@ namespace TransitGame
         {
             if (_world != null) Destroy(_world.gameObject);
             _world = new GameObject("World").transform;
+            _edgeMap = null;
             _stationViews.Clear();
             _lineViews.Clear();
             _trainViews.Clear();
@@ -57,6 +59,19 @@ namespace TransitGame
         void Update()
         {
             if (Engine != null && !Engine.IsGameOver) Engine.Tick(Time.deltaTime * TimeScale);
+        }
+
+        /// <summary>Lane offset for a line on a given station-to-station segment (view concern).</summary>
+        public Vector2 GetEdgeOffsetFor(int lineId, int stationA, int stationB) =>
+            LineLaneLayout.GetOffset(_edgeMap, Engine.Network, lineId, stationA, stationB);
+
+        /// <summary>Rebuilds lane assignments and redraws every line (shared segments shift).</summary>
+        void RefreshAllLines()
+        {
+            _edgeMap = LineLaneLayout.BuildEdgeMap(Engine.Network);
+            foreach (var view in _lineViews.Values)
+                if (Engine.Network.Lines.TryGetValue(view.LineId, out var line))
+                    view.Refresh(line);
         }
 
         /// <summary>Adds a train to the line that currently has the fewest trains.</summary>
@@ -101,25 +116,21 @@ namespace TransitGame
             var view = go.AddComponent<StationView>();
             view.Init(station, Engine.Config.OvercrowdGrace);
             _stationViews[station.Id] = view;
-
-            // New station can change existing line geometry? No — but refresh keeps views honest.
-            foreach (var lineView in _lineViews.Values)
-                if (Engine.Network.Lines.TryGetValue(lineView.LineId, out var line))
-                    lineView.Refresh(line);
+            RefreshAllLines();
         }
 
         void OnLineChanged(Line line)
         {
-            if (_lineViews.TryGetValue(line.Id, out var view))
+            if (!_lineViews.ContainsKey(line.Id))
             {
-                view.Refresh(line);
-                return;
+                var go = new GameObject($"Line_{line.Id}");
+                go.transform.SetParent(_world, false);
+                var lineView = go.AddComponent<LineView>();
+                lineView.Init(this, line);
+                _lineViews[line.Id] = lineView;
             }
-            var go = new GameObject($"Line_{line.Id}");
-            go.transform.SetParent(_world, false);
-            var lineView = go.AddComponent<LineView>();
-            lineView.Init(Engine, line);
-            _lineViews[line.Id] = lineView;
+            // A change to one line can shift lane assignments on shared segments.
+            RefreshAllLines();
         }
 
         void OnLineRemoved(int lineId)
@@ -127,6 +138,7 @@ namespace TransitGame
             if (!_lineViews.TryGetValue(lineId, out var view)) return;
             Destroy(view.gameObject);
             _lineViews.Remove(lineId);
+            RefreshAllLines();
         }
 
         void OnTrainAdded(Train train)
@@ -137,7 +149,7 @@ namespace TransitGame
             var color = _lineViews.TryGetValue(train.LineId, out var lineView)
                 ? lineView.Color
                 : Color.gray;
-            view.Init(Engine, train, color);
+            view.Init(this, train, color);
             _trainViews[train.Id] = view;
         }
 

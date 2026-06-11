@@ -8,14 +8,16 @@ namespace TransitGame
     {
         public int TrainId => _train.Id;
 
+        Bootstrap _boot;
         SimulationEngine _engine;
         Train _train;
         Transform _body;
         TextMesh _label;
 
-        public void Init(SimulationEngine engine, Train train, Color color)
+        public void Init(Bootstrap boot, Train train, Color color)
         {
-            _engine = engine;
+            _boot = boot;
+            _engine = boot.Engine;
             _train = train;
 
             var body = VisualFactory.MakeMeshObject("Body", VisualFactory.BuildQuad(0.72f, 0.42f), color, transform, 0f);
@@ -39,7 +41,8 @@ namespace TransitGame
         {
             if (_train == null) return;
             var pos = _engine.GetTrainPosition(_train);
-            transform.position = new Vector3(pos.X, pos.Y, -0.1f);
+            var lane = CurrentLaneOffset();
+            transform.position = new Vector3(pos.X + lane.x, pos.Y + lane.y, -0.1f);
 
             var (from, to) = _engine.GetTrainSegment(_train);
             var dir = new Vector2(to.X - from.X, to.Y - from.Y);
@@ -47,6 +50,16 @@ namespace TransitGame
                 _body.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
 
             _label.text = _train.Riders.Count > 0 ? _train.Riders.Count.ToString() : "";
+        }
+
+        Vector2 CurrentLaneOffset()
+        {
+            if (!_engine.Network.Lines.TryGetValue(_train.LineId, out var line)
+                || line.Stations.Count < 2) return Vector2.zero;
+            int n = line.Stations.Count;
+            int fi = Mathf.Clamp(_train.FromIndex, 0, n - 1);
+            int ti = Mathf.Clamp(_train.ToIndex, 0, n - 1);
+            return _boot.GetEdgeOffsetFor(_train.LineId, line.Stations[fi], line.Stations[ti]);
         }
     }
 }

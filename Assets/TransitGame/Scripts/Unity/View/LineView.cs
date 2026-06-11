@@ -9,12 +9,14 @@ namespace TransitGame
         public int LineId { get; private set; }
         public Color Color { get; private set; }
 
+        Bootstrap _boot;
         SimulationEngine _engine;
         LineRenderer _renderer;
 
-        public void Init(SimulationEngine engine, Line line)
+        public void Init(Bootstrap boot, Line line)
         {
-            _engine = engine;
+            _boot = boot;
+            _engine = boot.Engine;
             LineId = line.Id;
             Color = VisualFactory.LineColors[line.ColorIndex % VisualFactory.LineColors.Length];
             _renderer = gameObject.AddComponent<LineRenderer>();
@@ -28,13 +30,37 @@ namespace TransitGame
 
         public void Refresh(Line line)
         {
+            int n = line.Stations.Count;
             _renderer.loop = line.IsLoop;
-            _renderer.positionCount = line.Stations.Count;
-            for (int i = 0; i < line.Stations.Count; i++)
+            _renderer.positionCount = n;
+            for (int i = 0; i < n; i++)
             {
                 var p = _engine.Network.Stations[line.Stations[i]].Position;
-                _renderer.SetPosition(i, new Vector3(p.X, p.Y, 0.3f));
+                // Vertex offset = average of the lane offsets of its adjacent segments,
+                // so parallel runs stay parallel and corners stay joined.
+                Vector2 offset = Vector2.zero;
+                int count = 0;
+                if (i > 0 || line.IsLoop)
+                {
+                    int prev = (i - 1 + n) % n;
+                    offset += SegmentOffset(line, prev);
+                    count++;
+                }
+                if (i < n - 1 || line.IsLoop)
+                {
+                    offset += SegmentOffset(line, i);
+                    count++;
+                }
+                if (count > 0) offset /= count;
+                _renderer.SetPosition(i, new Vector3(p.X + offset.x, p.Y + offset.y, 0.3f));
             }
+        }
+
+        Vector2 SegmentOffset(Line line, int segmentIndex)
+        {
+            int n = line.Stations.Count;
+            return _boot.GetEdgeOffsetFor(LineId,
+                line.Stations[segmentIndex], line.Stations[(segmentIndex + 1) % n]);
         }
     }
 }

@@ -72,7 +72,7 @@ namespace TransitGame
             BuildDebugBar(canvasGo.transform);
 
             var help = MakeText(canvasGo.transform, "Help", 24, TextAnchor.LowerLeft);
-            help.text = "左ドラッグ: 駅→駅で路線作成/延長(両端同士で環状化)・路線上に落とすと中間駅挿入    右クリック: 路線を削除";
+            help.text = "左ドラッグ: 駅をなぞって路線を編集(通った駅を追加 / 戻すと取消 / 経路上の駅に触れると除外)    右クリック: 路線を削除";
             help.color = new Color(0.25f, 0.25f, 0.25f);
             SetAnchors(help.rectTransform, new Vector2(0, 0), new Vector2(0, 0),
                 new Vector2(24, 18), new Vector2(1000, 36));
