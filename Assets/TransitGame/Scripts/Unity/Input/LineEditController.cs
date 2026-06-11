@@ -61,14 +61,23 @@ namespace TransitGame
                 {
                     int target = FindStationNear(world);
                     if (target >= 0 && target != _dragStationId)
+                    {
                         Connect(_dragStationId, target);
+                    }
+                    else if (target < 0)
+                    {
+                        // Dropped on a line segment -> insert the dragged station there.
+                        var (lineId, segIndex) = FindLineNear(world);
+                        if (lineId >= 0)
+                            _boot.Engine.TryInsertStation(lineId, segIndex, _dragStationId);
+                    }
                     CancelDrag();
                 }
             }
 
             if (mouse.rightButton.wasPressedThisFrame)
             {
-                int lineId = FindLineNear(world);
+                var (lineId, _) = FindLineNear(world);
                 if (lineId >= 0) _boot.Engine.TryRemoveLine(lineId);
             }
         }
@@ -78,6 +87,9 @@ namespace TransitGame
             var engine = _boot.Engine;
             foreach (var line in engine.Network.Lines.Values)
             {
+                // Both ends of the same open line -> close it into a loop.
+                if (line.IsEndpoint(a) && line.IsEndpoint(b) && !line.IsLoop
+                    && engine.TryCloseLoop(line.Id)) return;
                 if (line.IsEndpoint(a) && !line.Contains(b) && engine.TryExtendLine(line.Id, a, b)) return;
                 if (line.IsEndpoint(b) && !line.Contains(a) && engine.TryExtendLine(line.Id, b, a)) return;
             }
@@ -123,26 +135,29 @@ namespace TransitGame
             return bestId;
         }
 
-        int FindLineNear(Vector3 world)
+        (int lineId, int segmentIndex) FindLineNear(Vector3 world)
         {
             var p = new Vector2(world.x, world.y);
             int bestId = -1;
+            int bestSeg = -1;
             float bestDist = LinePickRadius;
             foreach (var line in _boot.Engine.Network.Lines.Values)
             {
-                for (int i = 0; i < line.Stations.Count - 1; i++)
+                int segCount = line.IsLoop ? line.Stations.Count : line.Stations.Count - 1;
+                for (int i = 0; i < segCount; i++)
                 {
                     var a = StationPosition(line.Stations[i]);
-                    var b = StationPosition(line.Stations[i + 1]);
+                    var b = StationPosition(line.Stations[(i + 1) % line.Stations.Count]);
                     float d = DistancePointSegment(p, a, b);
                     if (d < bestDist)
                     {
                         bestDist = d;
                         bestId = line.Id;
+                        bestSeg = i;
                     }
                 }
             }
-            return bestId;
+            return (bestId, bestSeg);
         }
 
         static float DistancePointSegment(Vector2 p, Vector2 a, Vector2 b)

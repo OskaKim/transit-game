@@ -14,6 +14,8 @@ namespace TransitGame
         public GameConfig config;
 
         public SimulationEngine Engine { get; private set; }
+        /// <summary>Debug speed multiplier driven by the HUD buttons.</summary>
+        public float TimeScale { get; set; } = 1f;
 
         Transform _world;
         readonly Dictionary<int, StationView> _stationViews = new Dictionary<int, StationView>();
@@ -54,7 +56,26 @@ namespace TransitGame
 
         void Update()
         {
-            if (Engine != null && !Engine.IsGameOver) Engine.Tick(Time.deltaTime);
+            if (Engine != null && !Engine.IsGameOver) Engine.Tick(Time.deltaTime * TimeScale);
+        }
+
+        /// <summary>Adds a train to the line that currently has the fewest trains.</summary>
+        public bool AddTrainToSparsestLine()
+        {
+            int bestLine = -1;
+            int bestCount = int.MaxValue;
+            foreach (var lineId in Engine.Network.Lines.Keys)
+            {
+                int count = 0;
+                foreach (var t in Engine.Trains)
+                    if (t.LineId == lineId) count++;
+                if (count < bestCount)
+                {
+                    bestCount = count;
+                    bestLine = lineId;
+                }
+            }
+            return bestLine >= 0 && Engine.TryAddTrain(bestLine);
         }
 
         void SetupCamera()

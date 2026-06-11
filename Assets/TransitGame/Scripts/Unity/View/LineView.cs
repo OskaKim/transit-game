@@ -28,6 +28,7 @@ namespace TransitGame
 
         public void Refresh(Line line)
         {
+            _renderer.loop = line.IsLoop;
             _renderer.positionCount = line.Stations.Count;
             for (int i = 0; i < line.Stations.Count; i++)
             {

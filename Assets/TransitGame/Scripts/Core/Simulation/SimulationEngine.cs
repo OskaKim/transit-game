@@ -140,6 +140,7 @@ namespace TransitCore.Simulation
         {
             if (IsGameOver) return false;
             if (!Network.Lines.TryGetValue(lineId, out var line)) return false;
+            if (line.IsLoop) return false;
             if (!Network.Stations.ContainsKey(newStationId)) return false;
             if (line.Contains(newStationId)) return false;
 
@@ -161,6 +162,72 @@ namespace TransitCore.Simulation
 
             Network.BumpVersion();
             LineChanged?.Invoke(line);
+            return true;
+        }
+
+        /// <summary>
+        /// Inserts an existing station into the middle of a line, splitting segment
+        /// `segmentIndex` (between Stations[i] and Stations[i+1]; for loops, index
+        /// Count-1 is the wrap-around segment).
+        /// </summary>
+        public bool TryInsertStation(int lineId, int segmentIndex, int stationId)
+        {
+            if (IsGameOver) return false;
+            if (!Network.Lines.TryGetValue(lineId, out var line)) return false;
+            if (!Network.Stations.ContainsKey(stationId)) return false;
+            if (line.Contains(stationId)) return false;
+            int segCount = line.IsLoop ? line.Stations.Count : line.Stations.Count - 1;
+            if (segmentIndex < 0 || segmentIndex >= segCount) return false;
+
+            if (segmentIndex == line.Stations.Count - 1)
+            {
+                line.Stations.Add(stationId); // wrap-around segment of a loop
+            }
+            else
+            {
+                line.Stations.Insert(segmentIndex + 1, stationId);
+                foreach (var t in Trains)
+                {
+                    if (t.LineId != lineId) continue;
+                    if (t.FromIndex > segmentIndex) t.FromIndex++;
+                    if (t.ToIndex > segmentIndex) t.ToIndex++;
+                    // A train straddling the split segment now has a 2-wide span;
+                    // ClampTrainToLine snaps it on its next tick.
+                }
+            }
+            Network.BumpVersion();
+            LineChanged?.Invoke(line);
+            return true;
+        }
+
+        /// <summary>Closes an open line of 3+ stations into a loop.</summary>
+        public bool TryCloseLoop(int lineId)
+        {
+            if (IsGameOver) return false;
+            if (!Network.Lines.TryGetValue(lineId, out var line)) return false;
+            if (line.IsLoop || line.Stations.Count < 3) return false;
+            line.IsLoop = true;
+            Network.BumpVersion();
+            LineChanged?.Invoke(line);
+            return true;
+        }
+
+        /// <summary>Adds an extra train to an existing line.</summary>
+        public bool TryAddTrain(int lineId)
+        {
+            if (IsGameOver) return false;
+            if (!Network.Lines.TryGetValue(lineId, out var line) || line.Stations.Count < 2) return false;
+            var train = new Train
+            {
+                Id = _nextTrainId++,
+                LineId = lineId,
+                FromIndex = 0,
+                ToIndex = 1,
+                Direction = 1,
+                DwellRemaining = Config.DwellTime,
+            };
+            Trains.Add(train);
+            TrainAdded?.Invoke(train);
             return true;
         }
 
@@ -223,10 +290,12 @@ namespace TransitCore.Simulation
         void ClampTrainToLine(Train train, Line line)
         {
             int n = line.Stations.Count;
+            bool adjacent = Math.Abs(train.FromIndex - train.ToIndex) == 1
+                || (line.IsLoop && Math.Abs(train.FromIndex - train.ToIndex) == n - 1);
             bool broken = train.FromIndex < 0 || train.FromIndex >= n
                        || train.ToIndex < 0 || train.ToIndex >= n
                        || train.FromIndex == train.ToIndex
-                       || Math.Abs(train.FromIndex - train.ToIndex) != 1;
+                       || !adjacent;
             if (!broken) return;
             train.FromIndex = Math.Clamp(train.FromIndex, 0, n - 1);
             train.Direction = train.FromIndex == n - 1 ? -1 : 1;
@@ -238,13 +307,21 @@ namespace TransitCore.Simulation
         {
             int arrivedIdx = train.ToIndex;
             var station = Network.Stations[line.Stations[arrivedIdx]];
+            int n = line.Stations.Count;
 
             int dir = train.Direction;
-            if (arrivedIdx == line.Stations.Count - 1) dir = -1;
-            else if (arrivedIdx == 0) dir = 1;
+            if (line.IsLoop)
+            {
+                train.ToIndex = (arrivedIdx + dir + n) % n;
+            }
+            else
+            {
+                if (arrivedIdx == n - 1) dir = -1;
+                else if (arrivedIdx == 0) dir = 1;
+                train.ToIndex = arrivedIdx + dir;
+            }
             train.Direction = dir;
             train.FromIndex = arrivedIdx;
-            train.ToIndex = arrivedIdx + dir;
             train.Progress = 0f;
             train.DwellRemaining = Config.DwellTime;
 

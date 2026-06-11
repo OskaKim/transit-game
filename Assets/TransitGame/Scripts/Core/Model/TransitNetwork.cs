@@ -22,6 +22,11 @@ namespace TransitCore.Model
                     if (s[i] != stationId) continue;
                     if (i > 0) result.Add((s[i - 1], line.Id));
                     if (i < s.Count - 1) result.Add((s[i + 1], line.Id));
+                    if (line.IsLoop && s.Count >= 3)
+                    {
+                        if (i == 0) result.Add((s[s.Count - 1], line.Id));
+                        if (i == s.Count - 1) result.Add((s[0], line.Id));
+                    }
                 }
             }
             return result;

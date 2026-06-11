@@ -33,7 +33,8 @@ namespace TransitGame
         void UpdateStatus()
         {
             var e = _boot.Engine;
-            string s = $"Score: {e.Score}    Lines: {e.LinesAvailable}/{e.Config.MaxLines}    Time: {(int)e.ElapsedTime}s";
+            string s = $"Score: {e.Score}    Lines: {e.LinesAvailable}/{e.Config.MaxLines}    Time: {(int)e.ElapsedTime}s"
+                + (_boot.TimeScale != 1f ? $"    [x{_boot.TimeScale:0.#}]" : "");
             if (s == _lastStatus) return;
             _lastStatus = s;
             _statusText.text = s;
@@ -68,8 +69,10 @@ namespace TransitGame
             SetAnchors(_statusText.rectTransform, new Vector2(0, 1), new Vector2(0, 1),
                 new Vector2(24, -24), new Vector2(900, 50));
 
+            BuildDebugBar(canvasGo.transform);
+
             var help = MakeText(canvasGo.transform, "Help", 24, TextAnchor.LowerLeft);
-            help.text = "左ドラッグ: 駅をつないで路線を作成/延長    右クリック: 路線を削除";
+            help.text = "左ドラッグ: 駅→駅で路線作成/延長(両端同士で環状化)・路線上に落とすと中間駅挿入    右クリック: 路線を削除";
             help.color = new Color(0.25f, 0.25f, 0.25f);
             SetAnchors(help.rectTransform, new Vector2(0, 0), new Vector2(0, 0),
                 new Vector2(24, 18), new Vector2(1000, 36));
@@ -108,6 +111,41 @@ namespace TransitGame
                 _gameOverPanel.SetActive(false);
                 _boot.StartGame();
             });
+        }
+
+        void BuildDebugBar(Transform parent)
+        {
+            // Debug/tuning bar (top-right): time scale presets + extra train.
+            string[] labels = { "x1", "x2", "x4", "+列車" };
+            for (int i = 0; i < labels.Length; i++)
+            {
+                int index = i;
+                var go = new GameObject("Debug_" + labels[i]);
+                go.transform.SetParent(parent, false);
+                var image = go.AddComponent<Image>();
+                image.color = new Color(0.85f, 0.85f, 0.85f, 0.9f);
+                var button = go.AddComponent<Button>();
+                var rect = go.GetComponent<RectTransform>();
+                SetAnchors(rect, new Vector2(1, 1), new Vector2(1, 1),
+                    new Vector2(-24 - (labels.Length - 1 - i) * 110, -24), new Vector2(100, 48));
+                rect.pivot = new Vector2(1, 1);
+                var label = MakeText(go.transform, "Label", 26, TextAnchor.MiddleCenter);
+                label.text = labels[i];
+                var labelRect = label.rectTransform;
+                labelRect.anchorMin = Vector2.zero;
+                labelRect.anchorMax = Vector2.one;
+                labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
+                button.onClick.AddListener(() =>
+                {
+                    switch (index)
+                    {
+                        case 0: _boot.TimeScale = 1f; break;
+                        case 1: _boot.TimeScale = 2f; break;
+                        case 2: _boot.TimeScale = 4f; break;
+                        case 3: _boot.AddTrainToSparsestLine(); break;
+                    }
+                });
+            }
         }
 
         Text MakeText(Transform parent, string name, int size, TextAnchor anchor)

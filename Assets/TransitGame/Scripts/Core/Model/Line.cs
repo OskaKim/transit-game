@@ -6,8 +6,10 @@ namespace TransitCore.Model
     {
         public int Id { get; }
         public int ColorIndex { get; }
-        // Ordered station ids. Trains shuttle back and forth along this list.
+        // Ordered station ids. Trains shuttle back and forth along this list,
+        // or keep circulating in one direction when IsLoop is true.
         public List<int> Stations { get; } = new List<int>();
+        public bool IsLoop { get; set; }
 
         public Line(int id, int colorIndex)
         {

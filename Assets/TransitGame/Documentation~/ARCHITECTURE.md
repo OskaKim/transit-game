@@ -88,7 +88,10 @@ Assets/TransitGame/
 | `Tick(float dt)` | 全状態を dt 秒進める(スポーン→列車→ルール判定の順) |
 | `Initialize()` | 初期駅(○△□を1つずつ)を配置 |
 | `TryCreateLine(a, b, out id)` | 新規路線+列車1編成を生成(在庫チェック込み) |
-| `TryExtendLine(lineId, end, new)` | 路線の端を延長(先頭挿入時は列車indexを補正) |
+| `TryExtendLine(lineId, end, new)` | 路線の端を延長(先頭挿入時は列車indexを補正。環状線は不可) |
+| `TryInsertStation(lineId, segIdx, st)` | 既存路線の区間に中間駅を挿入 |
+| `TryCloseLoop(lineId)` | 3駅以上の路線を環状化(列車は反転せず周回するようになる) |
+| `TryAddTrain(lineId)` | 路線に列車を増結 |
 | `TryRemoveLine(lineId)` | 路線削除。乗車中の客は最寄り駅に降ろす |
 | `GetTrainPosition / GetTrainSegment` | ビュー用の補間座標取得(ポーリング用) |
 | `AddStationAt(shape, pos)` | テスト・デバッグ用の駅直接配置 |
@@ -161,6 +164,8 @@ Bootstrap.Update → engine.Tick(Time.deltaTime)
 
 - 位置 = `lerp(line.Stations[FromIndex], line.Stations[ToIndex], Progress)` の抽象座標
 - 駅到着で `DwellTime` 停車 → 乗降処理 → 終端なら方向反転
+- 環状線(`Line.IsLoop`)では反転せず index を modulo で回して周回する
+- 1路線に複数列車を走らせられる(`TryAddTrain`)
 - 路線延長で先頭に駅が挿入された場合は index を +1 補正
 - index が路線と矛盾したら(路線編集後)最寄りの正常な区間にスナップ(`ClampTrainToLine`)
 - 路線削除時は列車も削除し、乗客は出発駅の待機列に放出
@@ -188,7 +193,10 @@ Bootstrap.Update → engine.Tick(Time.deltaTime)
 3. 経路がなければ null
 4. 路線追加でキャッシュが無効化される
 5. 2路線+乗り換えで実際に配達される
-6. 混雑でゲームオーバーが発火する
+6. 中間駅挿入後も配達される(重複挿入は拒否)
+7. 環状線の列車は反転せず周回する(延長は拒否)
+8. 同一路線に2列車が破綻なく走る
+9. 混雑でゲームオーバーが発火する
 
 Unity Test Runner (EditMode) で実行。
 
@@ -197,7 +205,10 @@ Unity Test Runner (EditMode) で実行。
 | 操作 | 挙動 |
 |---|---|
 | 駅から左ドラッグ → 別の駅でドロップ | 始点(or 終点)が既存路線の端なら延長、でなければ新規路線 |
+| 同一路線の両端同士をドラッグで結ぶ | 環状化(3駅以上) |
+| 駅からドラッグ → 路線の上でドロップ | その区間に中間駅として挿入 |
 | 路線上で右クリック | 路線削除(在庫が戻る) |
+| 右上のデバッグバー | x1/x2/x4 タイムスケール、+列車(最も列車が少ない路線に増結) |
 | ゲームオーバー画面の「もう一度」 | World破棄 → エンジン再生成 |
 
 入力は新 Input System(`Mouse.current`)のみ。プロジェクト設定が
@@ -205,9 +216,8 @@ Unity Test Runner (EditMode) で実行。
 
 ## 9. 未実装(Phase 4 / スコープ外)
 
-- 週次報酬(車両追加 or 新路線の二択)
+- 週次報酬(車両追加 or 新路線の二択。コア側の `TryAddTrain` は実装済みなので、UI演出のみ)
 - 路線描画の45度スナップ整形
-- タイムスケール等のデバッグUI
 - セーブ/ロード、川とトンネル、モバイル対応
 
 ## 10. 他ゲームへの流用手順

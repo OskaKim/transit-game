@@ -91,6 +91,59 @@ namespace TransitGame.Tests
         }
 
         [Test]
+        public void InsertStation_SplitsSegmentAndStillDelivers()
+        {
+            var engine = new SimulationEngine(QuietConfig());
+            var a = engine.AddStationAt(StationShape.Circle, new Vector2(0, 0));
+            var b = engine.AddStationAt(StationShape.Triangle, new Vector2(8, 0));
+            var mid = engine.AddStationAt(StationShape.Square, new Vector2(4, 1));
+            engine.TryCreateLine(a.Id, b.Id, out var lineId);
+
+            Assert.IsTrue(engine.TryInsertStation(lineId, 0, mid.Id));
+            CollectionAssert.AreEqual(new[] { a.Id, mid.Id, b.Id }, engine.Network.Lines[lineId].Stations);
+            // Duplicate insert must fail.
+            Assert.IsFalse(engine.TryInsertStation(lineId, 0, mid.Id));
+
+            a.Enqueue(new Passenger(1, StationShape.Square));
+            for (int i = 0; i < 1200 && engine.Score == 0; i++) engine.Tick(0.05f);
+            Assert.AreEqual(1, engine.Score, "passenger should be delivered to the inserted square station");
+        }
+
+        [Test]
+        public void LoopLine_TrainCirculatesWithoutReversing()
+        {
+            var engine = new SimulationEngine(QuietConfig());
+            var a = engine.AddStationAt(StationShape.Circle, new Vector2(0, 0));
+            var b = engine.AddStationAt(StationShape.Triangle, new Vector2(4, 0));
+            var c = engine.AddStationAt(StationShape.Square, new Vector2(2, 3));
+            engine.TryCreateLine(a.Id, b.Id, out var lineId);
+            engine.TryExtendLine(lineId, b.Id, c.Id);
+
+            Assert.IsFalse(engine.TryCloseLoop(99), "unknown line must fail");
+            Assert.IsTrue(engine.TryCloseLoop(lineId));
+            Assert.IsTrue(engine.Network.Lines[lineId].IsLoop);
+            Assert.IsFalse(engine.TryExtendLine(lineId, c.Id, a.Id), "loops cannot be extended");
+
+            var train = engine.Trains[0];
+            int initialDirection = train.Direction;
+            for (int i = 0; i < 1200; i++) engine.Tick(0.05f);
+            Assert.AreEqual(initialDirection, train.Direction, "loop trains never reverse");
+        }
+
+        [Test]
+        public void AddTrain_SecondTrainRunsOnSameLine()
+        {
+            var engine = new SimulationEngine(QuietConfig());
+            var a = engine.AddStationAt(StationShape.Circle, new Vector2(0, 0));
+            var b = engine.AddStationAt(StationShape.Triangle, new Vector2(4, 0));
+            engine.TryCreateLine(a.Id, b.Id, out var lineId);
+
+            Assert.IsTrue(engine.TryAddTrain(lineId));
+            Assert.AreEqual(2, engine.Trains.Count);
+            for (int i = 0; i < 600; i++) engine.Tick(0.05f); // no exceptions with 2 trains
+        }
+
+        [Test]
         public void Overcrowding_TriggersGameOver()
         {
             var cfg = QuietConfig();
